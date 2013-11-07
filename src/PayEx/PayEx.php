@@ -2,19 +2,40 @@
 
 namespace PayEx;
 
-define('PAYEX_PROD_ORDER_WSDL',    'https://external.payex.com/pxorder/pxorder.asmx?wsdl');
-define('PAYEX_PROD_CONFINED_WSDL', 'https://confined.payex.com/PxConfined/pxorder.asmx?wsdl');
-
-define('PAYEX_TEST_ORDER_WSDL',    'https://test-external.payex.com/pxorder/pxorder.asmx?wsdl');
-define('PAYEX_TEST_CONFINED_WSDL', 'https://test-confined.payex.com/PxConfined/pxorder.asmx?wsdl');
-
 /**
  * PayEx
  */
 class PayEx implements \Serializable {
-	static $defaultParameters = array();
-	static $defaultOptions    = array('testMode' => false);
+	
+	//--------------------------------------------------------------------------
+	//
+	//  Constants & static class variables
+	//
+	//-------------------------------------------------------------------------	
+	
+	const PROD_ORDER_WSDL    = 'https://external.payex.com/pxorder/pxorder.asmx?wsdl';
+	const PROD_CONFINED_WSDL = 'https://confined.payex.com/PxConfined/pxorder.asmx?wsdl';
+	
+	const TEST_ORDER_WSDL    = 'https://test-external.payex.com/pxorder/pxorder.asmx?wsdl';
+	const TEST_CONFINED_WSDL = 'https://test-confined.payex.com/PxConfined/pxorder.asmx?wsdl';
+			
+	const TRANSACTION_SALE          = 'SALE';
+	const TRANSACTION_AUTHORIZATION = 'AUTHORIZATION';
+	
+	static $defaultParameters = array(
+		'purchaseOption' => 'SALE' // Authorization or SALE
+	);
+	static $defaultOptions    = array(
+		'testMode' => false
+	);
 
+	
+	//--------------------------------------------------------------------------
+	//
+	//  Constructor
+	//
+	//-------------------------------------------------------------------------	
+	
 	public function __construct($parameters = array(), $options = array()) {
 		if (!class_exists('SoapClient')) {
 			throw new Exception('>> Missing SoapClient << Make sure the php-soap extension is installed!!!');
@@ -25,7 +46,13 @@ class PayEx implements \Serializable {
 		$this->clients    = array();
 	}
 
-
+	
+	//--------------------------------------------------------------------------
+	//
+	//  Parameters and options methods
+	//
+	//-------------------------------------------------------------------------	
+	
 	public static function setDefaultParameter($name, $value) {
 		self::$defaultParameters[$name] = $value;
 	}
@@ -57,35 +84,14 @@ class PayEx implements \Serializable {
 	public function getParameter($name) {
 		return !isset($this->parameters[$name]) ? null : $this->parameters[$name];
 	}
-
-	public function getSoapWSDL($type) {
-		if (isset($this->options[$type])) {
-			return $this->options[$type];
-		}
-
-		$wsdls = array(
-			'orderWSDL'    => PAYEX_PROD_ORDER_WSDL,
-			'confinedWSDL' => PAYEX_PROD_CONFINED_WSDL
-		);
-
-		if ($this->options['testMode']) {
-			$wsdls = array(
-				'orderWSDL'    => PAYEX_TEST_ORDER_WSDL,
-				'confinedWSDL' => PAYEX_TEST_CONFINED_WSDL
-			);
-		}
-
-		return $wsdls[$type]; 
-	}
-
-	public function getSoapClient($wsdl, $options = array('trace' => 1, "exceptions" => 0), $flush = false) {
-		if (!isset($this->clients[$type]) || $flush) {
-			$this->clients[$type] = new \SoapClient($wsdl, $options);
-		}
-
-		return $this->clients[$type];
-	}
-
+	
+	
+	//--------------------------------------------------------------------------
+	//
+	//  Soap Service methods
+	//
+	//-------------------------------------------------------------------------	
+	
 	public static function transaction($parameters) {
 		$payex = new PayEx($parameters);
 		$payex->startTwoPhaseTransaction();
@@ -93,14 +99,10 @@ class PayEx implements \Serializable {
 		return $payex;
 	}
 
-	public function createHash($params) {
-		return md5($params . $this->params['encryptionKey']);
-	}
-
 	public function startTwoPhaseTransaction($parameters = array()) {
 		$parameters = array_merge($this->parameters, $parameters);
 
-		$this->result = $this->initialize();
+		$this->result = $this->initialize($oarameters);
 		$this->status = $this->checkStatus($this->result);
 	}
 
@@ -131,8 +133,48 @@ class PayEx implements \Serializable {
 			}
 		}
 	}
+	
+	
+	public function getSoapWSDL($type) {
+		if (isset($this->options[$type])) {
+			return $this->options[$type];
+		}
+
+		$wsdls = array(
+			'orderWSDL'    => self::PROD_ORDER_WSDL,
+			'confinedWSDL' => self::PROD_CONFINED_WSDL
+		);
+
+		if ($this->options['testMode']) {
+			$wsdls = array(
+				'orderWSDL'    => self::TEST_ORDER_WSDL,
+				'confinedWSDL' => self::TEST_CONFINED_WSDL
+			);
+		}
+
+		return $wsdls[$type]; 
+	}
+
+	public function getSoapClient($wsdl, $options = array('trace' => 1, "exceptions" => 0), $flush = false) {
+		if (!isset($this->clients[$type]) || $flush) {
+			$this->clients[$type] = new \SoapClient($wsdl, $options);
+		}
+
+		return $this->clients[$type];
+	}
+
+	public function createHash($params) {
+		return md5($params . $this->params['encryptionKey']);
+	}
 
 
+	
+	//--------------------------------------------------------------------------
+	//
+	//  Serializable implementation
+	//
+	//-------------------------------------------------------------------------	
+	
 	public function serialize() {
 		return serialize(array(
 			'parameters' => $parameters,
