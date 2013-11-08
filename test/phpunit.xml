@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit>
     <testsuites>
-        <testsuite name="Payex Order">
-            <file>OrderTest.php</file>
+        <testsuite name="Transaction">
+            <directory>.</directory>
         </testsuite>
     </testsuites>
 </phpunit>

@@ -18,6 +18,9 @@ class PayEx implements \Serializable {
 	
 	const TEST_ORDER_WSDL    = 'https://test-external.payex.com/pxorder/pxorder.asmx?wsdl';
 	const TEST_CONFINED_WSDL = 'https://test-confined.payex.com/PxConfined/pxorder.asmx?wsdl';
+	
+	const ORDER_WSDL_TYPE    = 'orderWSDL';
+	const CONFINED_WSDL_TYPE = 'confinedWSDL';
 			
 	const TRANSACTION_SALE          = 'SALE';
 	const TRANSACTION_AUTHORIZATION = 'AUTHORIZATION';
@@ -135,7 +138,7 @@ class PayEx implements \Serializable {
 	}
 	
 	
-	public function getSoapWSDL($type) {
+	public static function getSoapWSDL($type) {
 		if (isset($this->options[$type])) {
 			return $this->options[$type];
 		}
@@ -155,12 +158,17 @@ class PayEx implements \Serializable {
 		return $wsdls[$type]; 
 	}
 
-	public function getSoapClient($wsdl, $options = array('trace' => 1, "exceptions" => 0), $flush = false) {
-		if (!isset($this->clients[$type]) || $flush) {
-			$this->clients[$type] = new \SoapClient($wsdl, $options);
+	public static function getSoapClient($wsdl, $options = array('trace' => 1, "exceptions" => 0), $flush = false) {
+		if (in_array($wsdl, array(self::ORDER_WSDL_TYPE, self::CONFINED_WSDL_TYPE))) {
+			$wsdl = self::getSoapWSDL($wsdl);
+		}
+		
+		
+		if (!isset($this->clients[$wsdl]) || $flush) {
+			$this->clients[$wsdl] = new \SoapClient($wsdl, $options);
 		}
 
-		return $this->clients[$type];
+		return $this->clients[$wsdl];
 	}
 
 	public function createHash($params) {
@@ -175,13 +183,23 @@ class PayEx implements \Serializable {
 	//
 	//-------------------------------------------------------------------------	
 	
+	/**
+	 * Serialize
+	 * 
+	 * @return string
+	 */
 	public function serialize() {
 		return serialize(array(
 			'parameters' => $parameters,
 			'options'    => $options
 		));
 	}
-
+	
+	/**
+	 * Unserialize
+	 * 
+	 * @param mixed $data
+	 */
 	public function unserialize($data) {
 		$values = unserialize($data);
 		foreach ($values as $key => $value) {
