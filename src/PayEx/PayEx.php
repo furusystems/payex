@@ -1,5 +1,6 @@
 <?php
 
+// TODO: Complete
 namespace PayEx;
 
 /**
@@ -25,12 +26,31 @@ class PayEx implements \Serializable {
 	const TRANSACTION_SALE          = 'SALE';
 	const TRANSACTION_AUTHORIZATION = 'AUTHORIZATION';
 	
+	// @see http://www.payexpim.com/technical-reference/pxorder/initialize8/
 	static $defaultParameters = array(
-		'purchaseOption' => 'SALE' // Authorization or SALE
+		
+		// Authorization or SALE
+		'purchaseOption' => 'SALE', 
+		
+		// Default payment method. CREDITCARD|DIRECTDEBIT|PAYPAL...
+		'view' => 'CREDITCARD', 
+		
+		// 
+		'currency' => 'NOK',        
+		
+		// if the vat is supposed to be 25%, its defined as 25%
+		'vat'      => '0',           
+		
+		// Supported languages: nb-NO, da-DK, en-US, sv-SE, es-ES, de-DE, fi-FI, fr-FR, pl-PL, cs-CZ, hu-HU 
+		'clientLanguage' => 'nb-NO' 
 	);
-	static $defaultOptions    = array(
-		'testMode' => false
+	
+	static $defaultOptions = array(
+		'testMode' => false,
+		'throwError' => false
 	);
+	
+	static $clients = array();
 
 	
 	//--------------------------------------------------------------------------
@@ -105,21 +125,90 @@ class PayEx implements \Serializable {
 	public function startTwoPhaseTransaction($parameters = array()) {
 		$parameters = array_merge($this->parameters, $parameters);
 
-		$this->result = $this->initialize($oarameters);
+		$this->result = $this->initialize($parameters);
 		$this->status = $this->checkStatus($this->result);
 	}
 
 	public function initialize($parameters = array()) {
 		$parameters = array_merge(
 			array(
-				'clientIPAddress'  => $_SERVER['REMOTE_ADDR'],
-				'clientIdentifier' => "USERAGENT=" . $_SERVER['HTTP_USER_AGENT']
+				'clientIPAddress'  => isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '',
+				'clientIdentifier' => isset($_SERVER['HTTP_USER_AGENT']) ? "USERAGENT=" . $_SERVER['HTTP_USER_AGENT'] : '',
 			), $parameters
 		);
+
+		if (isset($parameters['additionalValues']) && is_array($parameters['additionalValues'])) {
+			$values = $parameters['additionalValues'];
+			$args = array();
+			$keys = array( 
+				'INVOICE_INVOICETEXT', 'INVOICE_MEDIADISTRIBUTION', 
+				'INVOICE_CUSTOMERID', 'INVOICE_DUEDATE', 
+				'INVOICE_COUNTRY', 'INVOICE_CUSTOMERTYPE', 
+				'INVOICE_SOCIALSECURITYNUMBER', 'INVOICE_ORGANIZATIONNUMBER', 
+				'INVOICE_FIRSTNAME', 'INVOICE_FAMILYNAME',
+				'INVOICE_PHONENUMBER', 'INVOICE_EMAIL', 
+				'INVOICE_INVOICENUMBER', 'PAYMENTMENU', 
+				'DOCUMENTID', 'PREAUTHORIZATION', 
+				'TRANSACTIONTYPE', 'MSISDN', 
+				'CHANNELID', 'DURATION'
+			);
+			foreach ($values as $key => $value) {
+				if (!in_array($key, $keys)) {
+					continue;
+				}
+				$args[] = $key . '=' . $value;
+			}
+			$parameters['additionalValues'] = join('&', $args);
+		}
 		
-
+		$keys = array(
+			'accountNumber' => true,
+			'purchaseOperation' => true,
+			'price' => true,
+			'priceArgList' => false,
+			'currency' => true,
+			'vat' => true,
+			'orderID' => true,
+			'productNumber' => true,
+			'description' => true,
+			'clientIPAddress' => true,
+			'clientIdentifier' => false,
+			'additionalValues' => false,
+			'externalID' => false,
+			'returnUrl' => true,
+			'view' => true,
+			'agreementRef' => false,
+			'cancelUrl' => false,
+			'clientLanguage' => false
+		);
+		
+		$values = array();
+		$args   = array();
+		foreach ($keys as $key => $required) {
+			$set   = isset($parameters[$key]);
+			$value = $set ? $parameters[$key] : '';
+			if ($required && !$set) {
+				throw new \Exception("Missing required parameter: ${key}");
+			}
+			else if ($required && $set && empty($value) && ($key != 'vat' || ($key == 'vat' && $value == ''))) {
+				throw new \Exception("Empty required parameter: ${key}");
+			}
+			
+			$values[$key] = $value;
+		}
+		
+		$values['hash'] = $this->createHash($values);
+		$soapClient = $this->getSoapClient( self::ORDER_WSDL_TYPE );
+		
+		try {
+			$respons = $soapClient->Initialize8($values);
+		} catch (\SoapFault $ex) {
+			throw new \Exception("SoapFault: " . $ex->faulString);
+		}
+		
+		return $respons->Initialize8Result;
 	}
-
+	
 	public function redirect() {
 		// if code & description & errorCode is OK, redirect the user
 		$status = $this->status;
@@ -137,8 +226,11 @@ class PayEx implements \Serializable {
 		}
 	}
 	
+	public function isOK() {
+		return $this->status['code'] == "OK";
+	}
 	
-	public static function getSoapWSDL($type) {
+	public function getSoapWSDL($type) {
 		if (isset($this->options[$type])) {
 			return $this->options[$type];
 		}
@@ -157,12 +249,11 @@ class PayEx implements \Serializable {
 
 		return $wsdls[$type]; 
 	}
-
-	public static function getSoapClient($wsdl, $options = array('trace' => 1, "exceptions" => 0), $flush = false) {
+	
+	public function getSoapClient($wsdl, $options = array('trace' => 1, "exceptions" => 0), $flush = false) {
 		if (in_array($wsdl, array(self::ORDER_WSDL_TYPE, self::CONFINED_WSDL_TYPE))) {
-			$wsdl = self::getSoapWSDL($wsdl);
+			$wsdl = $this->getSoapWSDL($wsdl);
 		}
-		
 		
 		if (!isset($this->clients[$wsdl]) || $flush) {
 			$this->clients[$wsdl] = new \SoapClient($wsdl, $options);
@@ -170,11 +261,21 @@ class PayEx implements \Serializable {
 
 		return $this->clients[$wsdl];
 	}
-
-	public function createHash($params) {
-		return md5($params . $this->params['encryptionKey']);
+	
+	public function checkStatus($response) {
+		$xml = new \SimpleXMLElement($response);
+		return array(
+			'code' => strtoupper($xml->status->code),
+			'errorCode' => strtoupper($xml->status->errorCode),
+			'description' => strtoupper($xml->status->description),
+			'redirectUrl' => strtoupper($xml->orderRef),
+			'authenticationRequired' => strtoupper($xml->authenticationRequired)
+		);
 	}
-
+	public function createHash($values) {
+		$str = trim(implode("", $values));
+		return md5( $str . $this->parameters['encryptionKey']);
+	}
 
 	
 	//--------------------------------------------------------------------------
