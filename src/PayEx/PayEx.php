@@ -117,16 +117,9 @@ class PayEx implements \Serializable {
 	
 	public static function transaction($parameters) {
 		$payex = new PayEx($parameters);
-		$payex->startTwoPhaseTransaction();
+		$payex->initialize($parameters);
 
 		return $payex;
-	}
-
-	public function startTwoPhaseTransaction($parameters = array()) {
-		$parameters = array_merge($this->parameters, $parameters);
-
-		$this->result = $this->initialize($parameters);
-		$this->status = $this->checkStatus($this->result);
 	}
 
 	public function initialize($parameters = array()) {
@@ -206,7 +199,46 @@ class PayEx implements \Serializable {
 			throw new \Exception("SoapFault: " . $ex->faulString);
 		}
 		
-		return $respons->Initialize8Result;
+		$result = $respons->Initialize8Result;		
+		$xml = new \SimpleXMLElement($result);
+		
+		$this->result = $result;
+		$this->status = array(
+			'code' => strtoupper($xml->status->code),
+			'errorCode' => strtoupper($xml->status->errorCode),
+			'description' => strtoupper($xml->status->description),
+			'redirectUrl' => strtoupper($xml->orderRef)
+		);
+		
+		return $this->status;
+	}
+	
+	public function complete($orderRef) {
+		$values = array( 
+			'accountNumber' => $this->getOption('accountNumber'),
+			'orderRef' => stripcslashes( $orderRef )
+		);
+		$values['hash'] = $this->createHash($values);
+		$soapClient = $this->getSoapClient( self::ORDER_WSDL_TYPE );
+		
+		try {
+			$response = $soapClient->Complete($values);
+		} catch (\SoapFault $ex) {
+			throw new Exception("SoapFaul: " . $ex->faultString);
+		}
+		
+		$result = $response->CompleteResult;
+		$this->result = $result;
+		
+		$xml = new \SimpleXMLElement($result);
+		$this->status = array(
+			'code' => strtoupper($xml->status->code),
+			'errorCode' => strtoupper($xml->status->errorCode),
+			'description' => strtoupper($xml->status->description),
+			'transactionStatus' => strtoupper($xml->transactionStatus)
+		);
+		
+		return $this->status;
 	}
 	
 	public function redirect() {
@@ -260,18 +292,8 @@ class PayEx implements \Serializable {
 		}
 
 		return $this->clients[$wsdl];
-	}
+	}	
 	
-	public function checkStatus($response) {
-		$xml = new \SimpleXMLElement($response);
-		return array(
-			'code' => strtoupper($xml->status->code),
-			'errorCode' => strtoupper($xml->status->errorCode),
-			'description' => strtoupper($xml->status->description),
-			'redirectUrl' => strtoupper($xml->orderRef),
-			'authenticationRequired' => strtoupper($xml->authenticationRequired)
-		);
-	}
 	public function createHash($values) {
 		$str = trim(implode("", $values));
 		return md5( $str . $this->parameters['encryptionKey']);
