@@ -50,7 +50,7 @@ class PayEx implements \Serializable {
 		'throwError' => false
 	);
 	
-	static $clients = array();
+	static $defaultClients = array();
 
 	
 	//--------------------------------------------------------------------------
@@ -63,7 +63,8 @@ class PayEx implements \Serializable {
 		if (!class_exists('SoapClient')) {
 			throw new Exception('>> Missing SoapClient << Make sure the php-soap extension is installed!!!');
 		}
-
+		
+		$this->initialized = true;
 		$this->parameters = array_merge(self::$defaultParameters, $parameters);
 		$this->options    = array_merge(self::$defaultOptions, $options);
 		$this->clients    = array();
@@ -117,12 +118,12 @@ class PayEx implements \Serializable {
 	
 	public static function transaction($parameters) {
 		$payex = new PayEx($parameters);
-		$payex->initialize($parameters);
+		$payex->transactionInitialize($parameters);
 
 		return $payex;
 	}
 
-	public function initialize($parameters = array()) {
+	public function transactionInitialize($parameters = array()) {
 		$parameters = array_merge(
 			array(
 				'clientIPAddress'  => isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '',
@@ -189,7 +190,7 @@ class PayEx implements \Serializable {
 			
 			$values[$key] = $value;
 		}
-		
+		$values['price'] = number_format($values['price'], 2, "", "");
 		$values['hash'] = $this->createHash($values);
 		$soapClient = $this->getSoapClient( self::ORDER_WSDL_TYPE );
 		
@@ -207,15 +208,30 @@ class PayEx implements \Serializable {
 			'code' => strtoupper($xml->status->code),
 			'errorCode' => strtoupper($xml->status->errorCode),
 			'description' => strtoupper($xml->status->description),
-			'redirectUrl' => strtoupper($xml->orderRef)
+			'redirectUrl' => (string) $xml->redirectUrl,
+			'orderRef' => strtoupper($xml->orderRef)
 		);
 		
 		return $this->status;
 	}
 	
-	public function complete($orderRef) {
+		
+	public function transactionIsOk() {
+		return $this->status['code'] == "OK";
+	}
+	
+	public function transactionComplete($orderRef = null) {
+		$not_set = empty($orderRef);
+		if ($orderRef && 
+				(!property_exists($this, 'status') || !isset($this->status['orderRef'])) ) {
+			throw new Exception("No orderRef and no orderRef found at this point the instance status.");
+		}
+		else if ($not_set) {
+			$orderRef = $this->status['orderRef'];
+		}
+		
 		$values = array( 
-			'accountNumber' => $this->getOption('accountNumber'),
+			'accountNumber' => $this->getParameter('accountNumber'),
 			'orderRef' => stripcslashes( $orderRef )
 		);
 		$values['hash'] = $this->createHash($values);
@@ -224,9 +240,13 @@ class PayEx implements \Serializable {
 		try {
 			$response = $soapClient->Complete($values);
 		} catch (\SoapFault $ex) {
-			throw new Exception("SoapFaul: " . $ex->faultString);
+			throw new Exception("SoapFault: " . $ex->faultString);
 		}
 		
+		if ($response instanceof \SoapFault) {
+			throw new \Exception("SoapFault: " . $ex->getMessage());
+		}
+
 		$result = $response->CompleteResult;
 		$this->result = $result;
 		
@@ -235,13 +255,18 @@ class PayEx implements \Serializable {
 			'code' => strtoupper($xml->status->code),
 			'errorCode' => strtoupper($xml->status->errorCode),
 			'description' => strtoupper($xml->status->description),
-			'transactionStatus' => strtoupper($xml->transactionStatus)
+			'transactionStatus' => strtoupper($xml->transactionStatus),
+			'orderRef' => $orderRef
 		);
+		
+		foreach (array('transactionErrorCode', 'transactionErrorDescription', 'transactionThirdPartyError') as $key) {
+			$this->status[$key] = property_exists($xml, $key) ? (string) $xml->{$key} : "";
+		}
 		
 		return $this->status;
 	}
 	
-	public function redirect() {
+	public function transactionRedirect() {
 		// if code & description & errorCode is OK, redirect the user
 		$status = $this->status;
 		$fn = function ($key) use ($status) {
@@ -256,10 +281,6 @@ class PayEx implements \Serializable {
 				echo "$error, $value"."\n"; 
 			}
 		}
-	}
-	
-	public function isOK() {
-		return $this->status['code'] == "OK";
 	}
 	
 	public function getSoapWSDL($type) {
@@ -312,9 +333,16 @@ class PayEx implements \Serializable {
 	 * @return string
 	 */
 	public function serialize() {
+		if (!property_exists($this, 'initialized')) {
+			return null;
+		}
+		
 		return serialize(array(
-			'parameters' => $parameters,
-			'options'    => $options
+			// 'defaultParameters' => self::$defaultParameters,
+			// 'defaultOptions' => self::$defaultOptions,
+			'parameters' => $this->parameters,
+			'options'    => $this->options,
+			'status'     => property_exists($this, 'status') ? $this->status : null
 		));
 	}
 	
@@ -323,10 +351,15 @@ class PayEx implements \Serializable {
 	 * 
 	 * @param mixed $data
 	 */
-	public function unserialize($data) {
+	public function unserialize($data) {		
 		$values = unserialize($data);
-		foreach ($values as $key => $value) {
-			$this->{$key} = $value;
+		
+		// self::$defaultParameters = $values['defaultParameters'];
+		// self::$defaultOptions    = $values['defaultOptions'];
+		foreach (array('parameters', 'options', 'status') as $key) {
+			$this->{$key} = $values[$key];
 		}
+		$this->initialized = true;
 	}
+	
 }

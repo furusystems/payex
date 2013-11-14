@@ -8,7 +8,7 @@ require_once('src/PayEx/PayEx.php');
 
 class TransactionTest extends PHPUnit_Framework_TestCase {
 	
-	const ACCOUNT_NUMBER    = '<accountNumber>';
+	const ACCOUNT_NUMBER    = '<accountNumber,0>';
 	const ENCRYPTION_KEY    = '<encryptionKey>';
 	const CLIENT_IP_ADDRESS = '127.0.0.0';
 	
