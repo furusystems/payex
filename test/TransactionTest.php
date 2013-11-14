@@ -3,7 +3,6 @@ use PayEx\PayEx;
 
 // TODO: Test with Cancel
 // TODO: Test with Complete
-// TODO: Test with Callback
 require_once('src/PayEx/PayEx.php');
 
 class TransactionTest extends PHPUnit_Framework_TestCase {
@@ -12,8 +11,7 @@ class TransactionTest extends PHPUnit_Framework_TestCase {
 	const ENCRYPTION_KEY    = '<encryptionKey>';
 	const CLIENT_IP_ADDRESS = '127.0.0.0';
 	
-	/* TODO... */
-	
+	/* TODO... */	
 	public function testSoapClient() {
 		$client = new PayEx;
 		$client->setOption('testMode', true);

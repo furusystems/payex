@@ -1,6 +1,5 @@
 <?php
 
-// TODO: Complete
 namespace PayEx;
 
 /**
