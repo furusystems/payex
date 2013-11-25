@@ -1,4 +1,4 @@
-# PAYEX PHP CLASS
+PAYEX PHP CLASS
 ===============
 
 A php5 module for simple transaction(s) with PayEx.
