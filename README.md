@@ -1,34 +1,79 @@
-PAYEX PHP CLASS
+# PAYEX PHP CLASS
 ===============
 
-This class was made to make the way we communicate with
-PayEx a bit more intutive as well as modern.
+A php5 module for simple transaction(s) with PayEx.
 
-The classes are all static, and fairly easy to manage.
-We use Laravel as a framework for most of our web applications, so this is made to be easy to install. Its on the roadmap to make a bundle for Laravel aswell.
+This module is a rewrite of [cobrax/payex](https://github.com/cobraz/payex) and intended for usage with php5 only and as composer compatible module.
 
-How to install?
+
+Dependencies
 ---------------
 
-1. Install the class somewhere.
+PHP >= 5.3
 
-2. Include
-> include("payex.php");
 
-3. Set your configuration in config.php.
+Installation
+---------------
 
-4. Do your transaction.
-> $transaction = PayEx::transaction(123, 1000.31);<br />
-> if($transaction->isOK()) $transaction->Redirect();
+If you're using Composer to manage libraries, include this package in your composer.json
 
-ToDo
-----
+	"require" : {
+	    "furusystems/payex-php" : "0.1.*"
+	}
 
->This project is pretty fresh. We are still working
->heavly on it, and there are no production package 
->released yet.
 
-*We haven't had time to add the todolist yet*
+Or just load this library in your PHP project by including PayEx.php
+
+	require_once('../your/project/directory/here/lib/PayEx/PayEx.php');
+
+
+
+Usage Example
+---------------
+
+// Start transaction
+	
+	use PayEx\PayEx;
+	...
+	
+	$parameters = array(
+		'accountNumber' => '<accountNumber>',
+		'encryptionKey' => '<encryptionKey>',
+		'purchaseOperation' => PayEx::TRANSACTION_AUTHORIZATION,
+		'view'           => 'CREDITCARD',
+		'currency'       => 'NOK',
+		'vat'            => '0',
+		'orderID'        => $orderID,
+		'productNumber'  => $productNumber,
+		'price'          => '100',
+		'description'    => 'blah',
+		'returnUrl'       => 'http://example.com/return-url',
+		# 'cancelUrl'       => 'http://example.com/cancel-url',
+	);
+	# PayEx::setDefaultOption('testMode', true);
+		
+	$client = PayEx::transaction($parameters);
+	if ($client->transactionIsOk()) {
+		$session->set('payex', $payex);
+		$client->transactionRedirect();
+	}
+
+	
+// Transaction return
+    
+    use PayEx\PayEx;
+	...
+	
+    $payex = $session->get('payex');
+
+    // 1. Explisit way
+    // $orderRef = $_REQUEST['orderRef'];
+    // $status   = $payex->transactionComplete($orderRef);
+
+    // 2. Implicit
+    $payex->transactionComplete(); // orderRef stored in this payex transaction instance
+
+
 
 Licence
 -------
@@ -36,9 +81,3 @@ Licence
 The project is released under GNU-license. The class
 are provided as is. And the class are in no way an offical
 class by PayEx. The initial creators are however a sertified partner with PayEx.
-
-Support
--------
-
-Do you need help with the class, send us an e-mail
-at cobraz@cobraz.no for assistance.    
