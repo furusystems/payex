@@ -1,3 +1,8 @@
+# THIS PACKAGE IS DEPRECATED
+
+Please use [payex-sdk-php](https://github.com/PayEx/payex-sdk-php) instead, a supported and maintained package from Payex.
+
+
 PAYEX PHP CLASS
 ===============
 
